@@ -127,7 +127,7 @@ index a5324dfd0c8a6bcd8fb7f89ce30d1f1b1ade0304..02564098d67f044cef54d285772a449d
  // is concerned.
  @property(nonatomic, readonly) NSString* subrole;
 diff --git a/content/browser/accessibility/browser_accessibility_cocoa.mm b/content/browser/accessibility/browser_accessibility_cocoa.mm
-index d792b573258714648c8ce66bedc2fbb4e7417028..b93e2280b459c60d6287c08392dd5aef94eafcd3 100644
+index d792b573258714648c8ce66bedc2fbb4e7417028..2fed4257026236b22eba912e95284c42050baab8 100644
 --- a/content/browser/accessibility/browser_accessibility_cocoa.mm
 +++ b/content/browser/accessibility/browser_accessibility_cocoa.mm
 @@ -208,6 +208,7 @@
@@ -368,6 +368,22 @@ index d792b573258714648c8ce66bedc2fbb4e7417028..b93e2280b459c60d6287c08392dd5aef
  
    return nil;
  }
+@@ -3786,6 +3820,7 @@ - (void)accessibilitySetValue:(id)value forAttribute:(NSString*)attribute {
+         AXPlatformRange(_owner->CreatePositionAt(range.location),
+                         _owner->CreatePositionAt(NSMaxRange(range))));
+   }
++#ifndef MAS_BUILD
+   if ([attribute
+           isEqualToString:NSAccessibilitySelectedTextMarkerRangeAttribute]) {
+     AXPlatformRange range = CreateRangeFromTextMarkerRange(value);
+@@ -3795,6 +3830,7 @@ - (void)accessibilitySetValue:(id)value forAttribute:(NSString*)attribute {
+     manager->SetSelection(AXPlatformRange(range.anchor()->AsLeafTextPosition(),
+                                           range.focus()->AsLeafTextPosition()));
+   }
++#endif
+ }
+ 
+ // Returns the deepest accessibility child that should not be ignored.
 diff --git a/content/browser/accessibility/browser_accessibility_manager_mac.mm b/content/browser/accessibility/browser_accessibility_manager_mac.mm
 index d508c73a0b335b08be4b00510b3d8c02804c149c..9717e9efde2e2bb4f877adee26bcdce3a2d672a7 100644
 --- a/content/browser/accessibility/browser_accessibility_manager_mac.mm
