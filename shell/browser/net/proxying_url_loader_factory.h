@@ -248,6 +248,7 @@ class ProxyingURLLoaderFactory
   // Mapping from our own internally generated request ID to an
   // InProgressRequest instance.
   std::map<uint64_t, std::unique_ptr<InProgressRequest>> requests_;
+  std::set<int32_t> intercepted_requests_;
 
   // A mapping from the network stack's notion of request ID to our own
   // internally generated request ID for the same request.
