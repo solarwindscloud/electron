@@ -273,9 +273,8 @@ void ElectronURLLoaderFactory::StartLoading(
   if (head->headers->IsRedirect(&location)) {
     auto new_method = ComputeMethodForRedirect(request.method,
                                                head->headers->response_code());
-    GURL new_location = GURL(location);
-    net::SiteForCookies new_site_for_cookies =
-        net::SiteForCookies::FromUrl(new_location);
+    auto new_location = request.url.Resolve(location);
+    auto new_site_for_cookies = net::SiteForCookies::FromUrl(new_location);
 
     network::ResourceRequest new_request = request;
     new_request.url = new_location;
