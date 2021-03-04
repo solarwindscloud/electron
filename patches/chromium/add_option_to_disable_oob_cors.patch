@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Krzysztof Halwa <krzysztof.halwa@solarwinds.com>
+Date: Thu, 4 Mar 2021 15:52:04 +0100
+Subject: Add option to disable OOB Cors.
+
+Added option for disabling OOB Cors to avoid regression when using intercepted handlers in Electron.
+
+diff --git a/third_party/blink/renderer/core/loader/threadable_loader.cc b/third_party/blink/renderer/core/loader/threadable_loader.cc
+index 0fe36e76bd7e10d920b0ae6c8210adc8ad33c83a..aaca986df6ed967e50c4521a4d64a8a9499e1823 100644
+--- a/third_party/blink/renderer/core/loader/threadable_loader.cc
++++ b/third_party/blink/renderer/core/loader/threadable_loader.cc
+@@ -221,6 +221,9 @@ ThreadableLoader::ThreadableLoader(
+       redirect_mode_(network::mojom::RedirectMode::kFollow),
+       override_referrer_(false) {
+   DCHECK(client);
++  if (std::getenv("DISABLE_OUT_OF_BLINK_CORS")) {
++    out_of_blink_cors_ = false;
++  }
+   if (!resource_fetcher_) {
+     if (auto* scope = DynamicTo<WorkerGlobalScope>(*execution_context_))
+       scope->EnsureFetcher();
+diff --git a/third_party/blink/renderer/core/loader/threadable_loader.h b/third_party/blink/renderer/core/loader/threadable_loader.h
+index 3099bdb9073ccc00c4285c3b32f2602d7a6d3771..d0e9b2df4507f4ca2ad0e241fc4a51ae95137993 100644
+--- a/third_party/blink/renderer/core/loader/threadable_loader.h
++++ b/third_party/blink/renderer/core/loader/threadable_loader.h
+@@ -216,7 +216,7 @@ class CORE_EXPORT ThreadableLoader final
+   const ResourceLoaderOptions resource_loader_options_;
+ 
+   // Always true. TODO(1053866): Remove this flag and code hidden by this flag.
+-  const bool out_of_blink_cors_;
++  bool out_of_blink_cors_;
+ 
+   // Corresponds to the CORS flag in the Fetch spec.
+   bool cors_flag_ = false;
