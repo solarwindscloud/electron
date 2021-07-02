@@ -72,6 +72,22 @@
 
 namespace electron {
 
+#if defined(OS_WIN)
+
+// Similar to the ones in display::win::ScreenWin, but with rounded values
+// These help to avoid problems that arise from unresizable windows where the
+// original ceil()-ed values can cause calculation errors, since converting
+// both ways goes through a ceil() call. Related issue: #15816
+gfx::Rect ScreenToDIPRect(HWND hwnd, const gfx::Rect& pixel_bounds) {
+  float scale_factor = display::win::ScreenWin::GetScaleFactorForHWND(hwnd);
+  gfx::Rect dip_rect = ScaleToRoundedRect(pixel_bounds, 1.0f / scale_factor);
+  dip_rect.set_origin(
+      display::win::ScreenWin::ScreenToDIPRect(hwnd, pixel_bounds).origin());
+  return dip_rect;
+}
+
+#endif
+
 namespace {
 
 #if defined(OS_WIN)
@@ -84,18 +100,6 @@ void FlipWindowStyle(HWND handle, bool on, DWORD flag) {
   else
     style &= ~flag;
   ::SetWindowLong(handle, GWL_STYLE, style);
-}
-
-// Similar to the ones in display::win::ScreenWin, but with rounded values
-// These help to avoid problems that arise from unresizable windows where the
-// original ceil()-ed values can cause calculation errors, since converting
-// both ways goes through a ceil() call. Related issue: #15816
-gfx::Rect ScreenToDIPRect(HWND hwnd, const gfx::Rect& pixel_bounds) {
-  float scale_factor = display::win::ScreenWin::GetScaleFactorForHWND(hwnd);
-  gfx::Rect dip_rect = ScaleToRoundedRect(pixel_bounds, 1.0f / scale_factor);
-  dip_rect.set_origin(
-      display::win::ScreenWin::ScreenToDIPRect(hwnd, pixel_bounds).origin());
-  return dip_rect;
 }
 
 gfx::Rect DIPToScreenRect(HWND hwnd, const gfx::Rect& pixel_bounds) {
@@ -311,6 +315,10 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
   aura::Window* window = GetNativeWindow();
   if (window)
     window->AddPreTargetHandler(this);
+
+  // On linux after the widget is initialized we might have to force set the
+  // bounds if the bounds are smaller than the current display
+  SetBounds(gfx::Rect(GetPosition(), bounds.size()), false);
 #endif
 }
 
@@ -423,6 +431,14 @@ void NativeWindowViews::Hide() {
   if (global_menu_bar_)
     global_menu_bar_->OnWindowUnmapped();
 #endif
+
+#if defined(OS_WIN)
+  // When the window is removed from the taskbar via win.hide(),
+  // the thumbnail buttons need to be set up again.
+  // Ensure that when the window is hidden,
+  // the taskbar host is notified that it should re-add them.
+  taskbar_host_.SetThumbarButtonsAdded(false);
+#endif
 }
 
 bool NativeWindowViews::IsVisible() {
@@ -495,7 +511,7 @@ void NativeWindowViews::Maximize() {
 
 void NativeWindowViews::Unmaximize() {
 #if defined(OS_WIN)
-  if (!(::GetWindowLong(GetAcceleratedWidget(), GWL_STYLE) & WS_THICKFRAME)) {
+  if (transparent()) {
     SetBounds(restore_bounds_, false);
     return;
   }
@@ -505,21 +521,22 @@ void NativeWindowViews::Unmaximize() {
 }
 
 bool NativeWindowViews::IsMaximized() {
-  // For window without WS_THICKFRAME style, we can not call IsMaximized().
-  // This path will be used for transparent windows as well.
-
+  if (widget()->IsMaximized()) {
+    return true;
+  } else {
 #if defined(OS_WIN)
-  if (!(::GetWindowLong(GetAcceleratedWidget(), GWL_STYLE) & WS_THICKFRAME)) {
-    // Compare the size of the window with the size of the display
-    auto display = display::Screen::GetScreen()->GetDisplayNearestWindow(
-        GetNativeWindow());
-    // Maximized if the window is the same dimensions and placement as the
-    // display
-    return GetBounds() == display.work_area();
-  }
+    if (transparent()) {
+      // Compare the size of the window with the size of the display
+      auto display = display::Screen::GetScreen()->GetDisplayNearestWindow(
+          GetNativeWindow());
+      // Maximized if the window is the same dimensions and placement as the
+      // display
+      return GetBounds() == display.work_area();
+    }
 #endif
 
-  return widget()->IsMaximized();
+    return false;
+  }
 }
 
 void NativeWindowViews::Minimize() {
@@ -915,7 +932,10 @@ bool NativeWindowViews::IsKiosk() {
 }
 
 SkColor NativeWindowViews::GetBackgroundColor() {
-  return root_view_->background()->get_color();
+  auto* background = root_view_->background();
+  if (!background)
+    return SK_ColorTRANSPARENT;
+  return background->get_color();
 }
 
 void NativeWindowViews::SetBackgroundColor(SkColor background_color) {

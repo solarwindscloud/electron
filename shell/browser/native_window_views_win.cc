@@ -149,8 +149,8 @@ std::set<NativeWindowViews*> NativeWindowViews::forwarding_windows_;
 HHOOK NativeWindowViews::mouse_hook_ = NULL;
 
 void NativeWindowViews::Maximize() {
-  // Only use Maximize() when window has WS_THICKFRAME style
-  if (::GetWindowLong(GetAcceleratedWidget(), GWL_STYLE) & WS_THICKFRAME) {
+  // Only use Maximize() when window is NOT transparent style
+  if (!transparent()) {
     if (IsVisible())
       widget()->Maximize();
     else
@@ -260,11 +260,12 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
     case WM_SIZING: {
       is_resizing_ = true;
       bool prevent_default = false;
-      NotifyWindowWillResize(gfx::Rect(*reinterpret_cast<RECT*>(l_param)),
-                             &prevent_default);
+      gfx::Rect bounds = gfx::Rect(*reinterpret_cast<RECT*>(l_param));
+      HWND hwnd = GetAcceleratedWidget();
+      gfx::Rect dpi_bounds = ScreenToDIPRect(hwnd, bounds);
+      NotifyWindowWillResize(dpi_bounds, &prevent_default);
       if (prevent_default) {
-        ::GetWindowRect(GetAcceleratedWidget(),
-                        reinterpret_cast<RECT*>(l_param));
+        ::GetWindowRect(hwnd, reinterpret_cast<RECT*>(l_param));
         return true;  // Tells Windows that the Sizing is handled.
       }
       return false;
@@ -288,11 +289,12 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
     case WM_MOVING: {
       is_moving_ = true;
       bool prevent_default = false;
-      NotifyWindowWillMove(gfx::Rect(*reinterpret_cast<RECT*>(l_param)),
-                           &prevent_default);
+      gfx::Rect bounds = gfx::Rect(*reinterpret_cast<RECT*>(l_param));
+      HWND hwnd = GetAcceleratedWidget();
+      gfx::Rect dpi_bounds = ScreenToDIPRect(hwnd, bounds);
+      NotifyWindowWillMove(dpi_bounds, &prevent_default);
       if (!movable_ || prevent_default) {
-        ::GetWindowRect(GetAcceleratedWidget(),
-                        reinterpret_cast<RECT*>(l_param));
+        ::GetWindowRect(hwnd, reinterpret_cast<RECT*>(l_param));
         return true;  // Tells Windows that the Move is handled. If not true,
                       // frameless windows can be moved using
                       // -webkit-app-region: drag elements.
@@ -324,8 +326,31 @@ bool NativeWindowViews::PreHandleMSG(UINT message,
                                     GET_Y_LPARAM(l_param), &prevent_default);
       return prevent_default;
     }
-    default:
+    case WM_SYSCOMMAND: {
+      // Mask is needed to account for double clicking title bar to maximize
+      WPARAM max_mask = 0xFFF0;
+      if (transparent() && ((w_param & max_mask) == SC_MAXIMIZE)) {
+        return true;
+      }
       return false;
+    }
+    case WM_INITMENU: {
+      // This is handling the scenario where the menu might get triggered by the
+      // user doing "alt + space" resulting in system maximization and restore
+      // being used on transparent windows when that does not work.
+      if (transparent()) {
+        HMENU menu = GetSystemMenu(GetAcceleratedWidget(), false);
+        EnableMenuItem(menu, SC_MAXIMIZE,
+                       MF_BYCOMMAND | MF_DISABLED | MF_GRAYED);
+        EnableMenuItem(menu, SC_RESTORE,
+                       MF_BYCOMMAND | MF_DISABLED | MF_GRAYED);
+        return true;
+      }
+      return false;
+    }
+    default: {
+      return false;
+    }
   }
 }
 

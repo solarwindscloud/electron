@@ -128,6 +128,10 @@ void stop_and_close_uv_loop(uv_loop_t* loop) {
 bool g_is_initialized = false;
 
 bool IsPackagedApp() {
+  auto env = base::Environment::Create();
+  if (env->HasVar("ELECTRON_FORCE_IS_PACKAGED"))
+    return true;
+
   base::FilePath exe_path;
   base::PathService::Get(base::FILE_EXE, &exe_path);
   base::FilePath::StringType base_name =
@@ -537,6 +541,16 @@ void NodeBindings::LoadEnvironment(node::Environment* env) {
 }
 
 void NodeBindings::PrepareMessageLoop() {
+#if !defined(OS_WIN)
+  int handle = uv_backend_fd(uv_loop_);
+
+  // If the backend fd hasn't changed, don't proceed.
+  if (handle == handle_)
+    return;
+
+  handle_ = handle;
+#endif
+
   // Add dummy handle for libuv, otherwise libuv would quit when there is
   // nothing to do.
   uv_async_init(uv_loop_, dummy_uv_handle_.get(), nullptr);
@@ -570,8 +584,13 @@ void NodeBindings::UvRunOnce() {
   // Enter node context while dealing with uv events.
   v8::Context::Scope context_scope(env->context());
 
-  // Perform microtask checkpoint after running JavaScript.
-  gin_helper::MicrotasksScope microtasks_scope(env->isolate());
+  // Node.js expects `kExplicit` microtasks policy and will run microtasks
+  // checkpoints after every call into JavaScript. Since we use a different
+  // policy in the renderer - switch to `kExplicit` and then drop back to the
+  // previous policy value.
+  auto old_policy = env->isolate()->GetMicrotasksPolicy();
+  DCHECK_EQ(v8::MicrotasksScope::GetCurrentDepth(env->isolate()), 0);
+  env->isolate()->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
 
   if (browser_env_ != BrowserEnvironment::BROWSER)
     TRACE_EVENT_BEGIN0("devtools.timeline", "FunctionCall");
@@ -581,6 +600,8 @@ void NodeBindings::UvRunOnce() {
 
   if (browser_env_ != BrowserEnvironment::BROWSER)
     TRACE_EVENT_END0("devtools.timeline", "FunctionCall");
+
+  env->isolate()->SetMicrotasksPolicy(old_policy);
 
   if (r == 0)
     base::RunLoop().QuitWhenIdle();  // Quit from uv.

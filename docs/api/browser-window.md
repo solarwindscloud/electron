@@ -1389,6 +1389,8 @@ The native type of the handle is `HWND` on Windows, `NSView*` on macOS, and
 
 * `message` Integer
 * `callback` Function
+  * `wParam` any - The `wParam` provided to the WndProc
+  * `lParam` any - The `lParam` provided to the WndProc
 
 Hooks a windows message. The `callback` is called when
 the message is received in the WndProc.
@@ -1441,7 +1443,7 @@ Returns `Boolean` - Whether the window's document has been edited.
 
 Returns `Promise<NativeImage>` - Resolves with a [NativeImage](native-image.md)
 
-Captures a snapshot of the page within `rect`. Omitting `rect` will capture the whole visible page.
+Captures a snapshot of the page within `rect`. Omitting `rect` will capture the whole visible page. If the page is not visible, `rect` may be empty.
 
 #### `win.loadURL(url[, options])`
 

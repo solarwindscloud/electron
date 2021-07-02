@@ -8,12 +8,14 @@
 #import <Cocoa/Cocoa.h>
 
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "base/mac/scoped_nsobject.h"
 #include "shell/browser/native_window.h"
+#include "ui/display/display_observer.h"
 #include "ui/native_theme/native_theme_observer.h"
 #include "ui/views/controls/native/native_view_host.h"
 
@@ -27,7 +29,9 @@ namespace electron {
 
 class RootViewMac;
 
-class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
+class NativeWindowMac : public NativeWindow,
+                        public ui::NativeThemeObserver,
+                        public display::DisplayObserver {
  public:
   NativeWindowMac(const gin_helper::Dictionary& options, NativeWindow* parent);
   ~NativeWindowMac() override;
@@ -129,7 +133,6 @@ class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
   bool IsVisibleOnAllWorkspaces() override;
 
   void SetAutoHideCursor(bool auto_hide) override;
-
   void SelectPreviousTab() override;
   void SelectNextTab() override;
   void MergeAllWindows() override;
@@ -140,6 +143,7 @@ class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
   bool SetWindowButtonVisibility(bool visible) override;
 
   void SetVibrancy(const std::string& type) override;
+  void UpdateFrame() override;
   void SetTouchBar(
       std::vector<gin_helper::PersistentDictionary> items) override;
   void RefreshTouchBarItem(const std::string& item_id) override;
@@ -159,10 +163,15 @@ class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
 
   // Custom traffic light positioning
   void RedrawTrafficLights() override;
-  void SetExitingFullScreen(bool flag);
   void SetTrafficLightPosition(const gfx::Point& position) override;
   gfx::Point GetTrafficLightPosition() const override;
   void OnNativeThemeUpdated(ui::NativeTheme* observed_theme) override;
+
+  enum class FullScreenTransitionState { ENTERING, EXITING, NONE };
+
+  // Handle fullscreen transitions.
+  void SetFullScreenTransitionState(FullScreenTransitionState state);
+  void HandlePendingFullscreenTransitions();
 
   enum class VisualEffectState {
     FOLLOW_WINDOW,
@@ -183,12 +192,15 @@ class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
   bool zoom_to_page_width() const { return zoom_to_page_width_; }
   bool fullscreen_window_title() const { return fullscreen_window_title_; }
   bool always_simple_fullscreen() const { return always_simple_fullscreen_; }
-  bool exiting_fullscreen() const { return exiting_fullscreen_; }
 
  protected:
   // views::WidgetDelegate:
   bool CanResize() const override;
   views::View* GetContentsView() override;
+
+  // display::DisplayObserver:
+  void OnDisplayMetricsChanged(const display::Display& display,
+                               uint32_t changed_metrics) override;
 
  private:
   // Add custom layers to the content view.
@@ -216,12 +228,17 @@ class NativeWindowMac : public NativeWindow, public ui::NativeThemeObserver {
   std::unique_ptr<RootViewMac> root_view_;
 
   bool is_kiosk_ = false;
-  bool was_fullscreen_ = false;
   bool zoom_to_page_width_ = false;
   bool fullscreen_window_title_ = false;
   bool resizable_ = true;
-  bool exiting_fullscreen_ = false;
   gfx::Point traffic_light_position_;
+
+  std::queue<bool> pending_transitions_;
+  FullScreenTransitionState fullscreen_transition_state() const {
+    return fullscreen_transition_state_;
+  }
+  FullScreenTransitionState fullscreen_transition_state_ =
+      FullScreenTransitionState::NONE;
 
   NSInteger attention_request_id_ = 0;  // identifier from requestUserAttention
 
